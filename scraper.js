@@ -145,7 +145,6 @@ async function extractAndSaveUserLinks(driver) {
               // Wait for the new content to load, for example, wait for a specific element to appear
               await driver.findElements(By.css('td[data-qa="user-name"]'), 10000); // Adjust time as necessary
 
-              return 'hello'
           } else {
               hasNextPage = false; // If no next button is found, assume no more pages
           }
