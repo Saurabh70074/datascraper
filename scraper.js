@@ -1,114 +1,123 @@
-const puppeteer = require('puppeteer');
+const { Builder, By } = require('selenium-webdriver');
+const chrome = require('selenium-webdriver/chrome');
 const fs = require('fs');
-const path = require('path');
-const csv = require('csv-parser');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
-(async () => {
-  // Launch browser
-  const browser = await puppeteer.launch({
-    headless: false, // Set to true to run headless
-  });
+async function login(driver) {
+    // Open the login page
+    await driver.get('https://learn.sassoon-online.com');
 
-  // Open a new page
-  const page = await browser.newPage();
+    // Click the login button
+    await driver.findElement(By.css('.navigation__account-item_login')).click();
 
-  // Go to the login page
-  await page.goto('https://ams.educause.edu/eweb/DynamicPage.aspx?Site=EDU&WebCode=LoginRequired&URL_success=https%3A%2F%2Feducause-netforum-bridge.proxy.cirrusidentity.com%2Fmodule.php%2Fnetforum%2Flinkback-tng.php%3Fstate%3D_7a8fab5ec4be83ffec30aea64cc993fa8fac5bbd6e%253Ahttps%253A%252F%252Feducause-netforum-bridge.proxy.cirrusidentity.com%252Fsaml2%252Fidp%252FSSOService.php%253Fspentityid%253Dhttps%25253A%25252F%25252Fsso.educause.edu%25252Fsp%2526ConsumerURL%253Dhttps%25253A%25252F%25252Fsso.educause.edu%25252Fmodule.php%25252Fsaml%25252Fsp%25252Fsaml2-acs.php%25252Feducause_proxy%2526cookieTime%253D1728886030%26usertoken%3D%7Btoken%7D', { waitUntil: 'networkidle2' });
+    // Wait for the page to load
+    await driver.sleep(5000);
 
-  // Fill in login form
-  await page.type('#eWebLoginControl_TextBoxLoginName', 'sumit.rawat@thoughtjumper.com'); // Replace with your username
-  await page.type('#eWebLoginControl_TextBoxPassword', 'Sumit@1503'); // Replace with your password
+    // Enter email and password
+    await driver.findElement(By.name('user[email]')).sendKeys('rohit.negi1@boundlesslearning.com');
+    await driver.findElement(By.name('user[password]')).sendKeys('Naruto@Love15_');
 
-  // Click the login button
-  await page.click('#eWebLoginControl_LoginGoButton');
+    // Submit the login form
+    await driver.findElement(By.css('.button-primary.g-recaptcha')).click();
 
-  // Wait for navigation after login
-  await page.waitForNavigation({ waitUntil: 'networkidle2' });
+    // Wait for navigation after login
+    await driver.sleep(10000);
 
-  // Read links from the CSV file
-  const links = [];
-  fs.createReadStream(path.join(__dirname, 'CIO_ Senior-IT-members-LIST-USA.csv'))
-    .pipe(csv())
-    .on('data', (row) => {
-      console.log('Row data:', row); // Log each row
-      links.push(row.URL); // Ensure 'link' matches the column name in your CSV
-    })
-    .on('end', async () => {
-      console.log('Links:', links); // Log the collected links
+    // Check for CAPTCHA
+    try {
+        await driver.findElement(By.id('captchaElement'));
+        console.log("CAPTCHA detected. Please solve it manually.");
+        await new Promise((resolve) => {
+            process.stdin.once('data', () => {
+                resolve();
+            });
+        });
+    } catch (error) {
+        console.log("No CAPTCHA detected.");
+    }
+}
 
-      const results = [];
+async function extractAndSaveUserLinks(driver) {
+    // Navigate to the user management page
+    await driver.get('https://learn.sassoon-online.com/manage/users');
 
-      for (const link of links) {
-        if (!link) {
-          console.error('Link is undefined or empty. Skipping...');
-          continue; // Skip this iteration if link is not valid
-        }
-
-        try {
-          // Go to the profile page
-          await page.goto(link, { waitUntil: 'networkidle2' });
-
-          // Extract the required data
-          const pageData = await page.evaluate(() => {
-            const title = document.querySelector('.profile__meta-title')?.innerText || null;
-            const org = document.querySelector('.profile__meta-org')?.innerText || null;
-            const location = document.querySelector('.profile__meta-location')?.innerText || null;
-            const phone = document.querySelector('.profile__meta-phone')?.innerText || null;
-            const email = document.querySelector('.profile__meta-email')?.innerText || null;           
-            const social = document.querySelector('.profile__meta-social')?.innerText || null;
-
-            // Extract text from all <li> elements within <ul> under profile__meta
-            const metaListItems = Array.from(document.querySelectorAll('.profile-header ul li'))
-              .map(li => {
-                // Extract text from h2 and h3 within each <li>
-                const h2Text = li.querySelector('h2')?.innerText || null;
-                const h3Text = li.querySelector('h3')?.innerText || null;
-                return { h2Text, h3Text };
-              })
-              .filter(item => item.h2Text || item.h3Text); // Filter out empty items
-
-            return {
-              org,
-              title,
-              email,
-              phone,
-              social,
-              location,
-              metaListItems, // Include the list items in the returned data
-            };
-          });
-
-          // Add the data to results
-          results.push({ link, ...pageData });
-        } catch (error) {
-          console.error(`Error processing link ${link}:`, error);
-        }
-      }
-
-      // Save results to JSON file
-      fs.writeFileSync('results.json', JSON.stringify(results, null, 2), 'utf-8');
-      console.log('Data saved to results.json');
-
-      // Prepare CSV writer
-      const csvWriter = createCsvWriter({
-        path: 'results.csv',
+    // CSV writer setup
+    const csvWriter = createCsvWriter({
+        path: 'user_links.csv',
         header: [
-          { id: 'link', title: 'Link' },
-          { id: 'title', title: 'Title' },
-          { id: 'org', title: 'Organization' },
-          { id: 'location', title: 'Location' },
-          { id: 'phone', title: 'Phone' },
-          { id: 'email', title: 'Email' },
-          { id: 'social', title: 'Social' },
+            { id: 'userName', title: 'User Name' },
+            { id: 'link', title: 'Link' },
         ],
-      });
-
-      // Write results to CSV file
-      await csvWriter.writeRecords(results);
-      console.log('Data saved to results.csv');
-
-      // Close the browser
-      await browser.close();
     });
+
+    const records = [];
+
+    let hasNextPage = true;
+
+    while (hasNextPage) {
+        // Wait for the page to load
+        await driver.sleep(5000);
+
+        // Find all <td> elements with data-qa="user-name"
+        const userNameElements = await driver.findElements(By.css('td[data-qa="user-name"]'));
+
+        // Extract user name and link data from the current page
+        for (const userNameElement of userNameElements) {
+            try {
+                // Find the <a> tag within the <td>
+                const linkElement = await userNameElement.findElement(By.tagName('a'));
+                const userName = await linkElement.getText(); // Get the text of the user name
+                const userLink = await linkElement.getAttribute('href'); // Get the href attribute
+
+                // Add to records
+                records.push({ userName, link: userLink });
+                console.log(`Extracted: ${userName}, ${userLink}`);
+            } catch (error) {
+                console.log("Error extracting user data:", error);
+            }
+        }
+
+        // Try to click the next page button (class "toga-icon-arrow-right")
+        try {
+          await driver.findElement(By.css('.toga-icon-arrow-right')).click();
+          
+          console.log("Next page clicked.");
+      
+          // Wait for the new content to load, for example, wait for a specific element to appear
+          await driver.wait(until.elementLocated(By.css('td[data-qa="user-name"]')), 10000); // Adjust time as necessary
+      } catch (error) {
+          console.log("No more pages to navigate or error clicking next:", error);
+          hasNextPage = false;
+      }
+      
+    }
+
+    // Write to CSV
+    await csvWriter.writeRecords(records);
+    console.log('User links have been saved to user_links.csv');
+}
+
+(async function main() {
+    // Chrome options
+    const chromeOptions = new chrome.Options();
+    chromeOptions.addArguments('--no-sandbox');
+    chromeOptions.addArguments('--disable-dev-shm-usage');
+    chromeOptions.addArguments('--disable-blink-features=AutomationControlled'); // Hide automation flag
+    chromeOptions.addArguments('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    // chromeOptions.addArguments('--headless');  // Uncomment to run headless
+
+    const driver = await new Builder()
+        .forBrowser('chrome')
+        .setChromeOptions(chromeOptions)
+        .build();
+
+    try {
+        // Perform login
+        await login(driver);
+        // Extract user links and save to CSV
+        await extractAndSaveUserLinks(driver);
+    } finally {
+        // Close the browser
+        await driver.quit();
+    }
 })();
