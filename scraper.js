@@ -1,7 +1,7 @@
 const { Builder, By } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const fs = require('fs');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+// const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
 async function login(driver) {
     // Open the login page
@@ -97,20 +97,22 @@ async function login(driver) {
 //     console.log('User links have been saved to user_links.csv');
 // }
 
+const { createObjectCsvWriter } = require('csv-writer');
+
 async function extractAndSaveUserLinks(driver) {
   // Navigate to the user management page
   await driver.get('https://learn.sassoon-online.com/manage/users');
 
-  // CSV writer setup
-  const csvWriter = createCsvWriter({
+  // CSV writer setup in append mode
+  const csvWriter = createObjectCsvWriter({
       path: 'user_links.csv',
       header: [
           { id: 'userName', title: 'User Name' },
           { id: 'link', title: 'Link' },
       ],
+      append: true // Enable appending to the file
   });
 
-  const records = [];
   let hasNextPage = true;
 
   while (hasNextPage) {
@@ -128,9 +130,11 @@ async function extractAndSaveUserLinks(driver) {
               const userName = await linkElement.getText(); // Get the text of the user name
               const userLink = await linkElement.getAttribute('href'); // Get the href attribute
 
-              // Add to records
-              records.push({ userName, link: userLink });
-              console.log(`Extracted: ${userName}, ${userLink}`);
+              // Add the current record
+              const record = [{ userName, link: userLink }];
+              await csvWriter.writeRecords(record); // Write record immediately
+              
+              console.log(`Extracted and saved: ${userName}, ${userLink}`);
           } catch (error) {
               console.log("Error extracting user data:", error);
           }
@@ -142,11 +146,12 @@ async function extractAndSaveUserLinks(driver) {
           if (nextButton) {
               await nextButton.click();
               console.log("Next page clicked.");
-              // Wait for the new content to load, for example, wait for a specific element to appear
+              
+              await driver.sleep(5000);
+              // Wait for the new content to load, e.g., wait for a specific element to appear
               await driver.findElements(By.css('td[data-qa="user-name"]'), 10000); // Adjust time as necessary
-
           } else {
-              hasNextPage = false; // If no next button is found, assume no more pages
+              hasNextPage = false; // No next button means no more pages
           }
       } catch (error) {
           console.log("No more pages to navigate or error clicking next:", error);
@@ -154,10 +159,9 @@ async function extractAndSaveUserLinks(driver) {
       }
   }
 
-  // Write to CSV
-  await csvWriter.writeRecords(records);
-  console.log('User links have been saved to user_links.csv');
+  console.log('All user links have been extracted and saved.');
 }
+
 
 
 (async function main() {
