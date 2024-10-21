@@ -1,177 +1,101 @@
 const { Builder, By } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const fs = require('fs');
-// const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+const { parse } = require('csv-parse');
+const { createObjectCsvWriter } = require('csv-writer');
 
+// Function to read URLs from a CSV file
+async function readUrlsFromCsv(filePath) {
+    return new Promise((resolve, reject) => {
+        const urls = [];
+        fs.createReadStream(filePath)
+            .pipe(parse({ columns: true }))
+            .on('data', (row) => urls.push(row.url)) // Assuming the column name for URLs is 'link'
+            .on('end', () => resolve(urls))
+            .on('error', (error) => reject(error));
+    });
+}
+
+// Function to log in to the website
 async function login(driver) {
-    // Open the login page
     await driver.get('https://learn.sassoon-online.com');
-
-    // Click the login button
     await driver.findElement(By.css('.navigation__account-item_login')).click();
-
-    // Wait for the page to load
     await driver.sleep(5000);
-
-    // Enter email and password
     await driver.findElement(By.name('user[email]')).sendKeys('rohit.negi1@boundlesslearning.com');
     await driver.findElement(By.name('user[password]')).sendKeys('Naruto@Love15_');
-
-    // Submit the login form
     await driver.findElement(By.css('.button-primary.g-recaptcha')).click();
-
-    // Wait for navigation after login
-    await driver.sleep(10000);
+    await driver.sleep(90000);
 
     // Check for CAPTCHA
     try {
-        await driver.findElement(By.id('captchaElement'));
-        console.log("CAPTCHA detected. Please solve it manually.");
-        await new Promise((resolve) => {
-            process.stdin.once('data', () => {
-                resolve();
-            });
-        });
+      await driver.findElement(By.id('captchaElement'));
+      console.log("CAPTCHA detected. Please solve it within 90 seconds.");
+      
+      // Wait for 90 seconds to allow CAPTCHA solving
+      await driver.sleep(90000);
+
+      console.log("CAPTCHA check complete.");
+  } catch (error) {
+      console.log("No CAPTCHA detected.");
+  }
+}
+
+// Function to extract all bundle details including expiry dates
+async function extractAndSaveUserInfo(driver, csvWriter, url) {
+    try {
+        const userName = await driver.findElement(By.css('h1.MobileTitleBar_mobile-title-bar__title__78')).getText().catch(() => 'N/A');
+        
+        // Extract bundle rows
+        const bundleRows = await driver.findElements(By.css('tbody tr.bundle-enrollments-row_kttW1'));
+        
+        for (const row of bundleRows) {
+            const bundleName = await row.findElement(By.css('td.bundle-enrollments-row__bundle-name_Pu24E span')).getText().catch(() => 'N/A');
+            const enrollmentBadge = await row.findElement(By.css('td[data-qa="enrollment-badge"] span')).getText().catch(() => 'N/A');
+            
+            // Extract expiry date, default to 'N/A' if not found
+            let expiryDate = 'N/A';
+            const expiryDateElement = await row.findElements(By.css('td[data-qa="expiry-date"]'));
+            if (expiryDateElement.length > 0) {
+                expiryDate = await expiryDateElement[0].getText();
+            }
+
+            const record = { userName, url, bundleName, enrollmentBadge, expiryDate };
+            await csvWriter.writeRecords([record]); // Write to CSV for each bundle
+            console.log(`Extracted and saved: ${JSON.stringify(record)}`);
+        }
     } catch (error) {
-        console.log("No CAPTCHA detected.");
+        console.log("Error extracting user info:", error);
     }
 }
 
-// async function extractAndSaveUserLinks(driver) {
-//     // Navigate to the user management page
-//     await driver.get('https://learn.sassoon-online.com/manage/users');
+// Function to scrape URLs in parallel
+async function scrapeUrlsInParallel(driver, csvWriter, urls, concurrency = 5) {
+    const batches = [];
+    for (let i = 0; i < urls.length; i += concurrency) {
+        batches.push(urls.slice(i, i + concurrency));
+    }
 
-//     // CSV writer setup
-//     const csvWriter = createCsvWriter({
-//         path: 'user_links.csv',
-//         header: [
-//             { id: 'userName', title: 'User Name' },
-//             { id: 'link', title: 'Link' },
-//         ],
-//     });
-
-//     const records = [];
-
-//     let hasNextPage = true;
-
-//     while (hasNextPage) {
-//         // Wait for the page to load
-//         await driver.sleep(5000);
-
-//         // Find all <td> elements with data-qa="user-name"
-//         const userNameElements = await driver.findElements(By.css('td[data-qa="user-name"]'));
-
-//         // Extract user name and link data from the current page
-//         for (const userNameElement of userNameElements) {
-//             try {
-//                 // Find the <a> tag within the <td>
-//                 const linkElement = await userNameElement.findElement(By.tagName('a'));
-//                 const userName = await linkElement.getText(); // Get the text of the user name
-//                 const userLink = await linkElement.getAttribute('href'); // Get the href attribute
-
-//                 // Add to records
-//                 records.push({ userName, link: userLink });
-//                 console.log(`Extracted: ${userName}, ${userLink}`);
-//             } catch (error) {
-//                 console.log("Error extracting user data:", error);
-//             }
-//         }
-
-//         // Try to click the next page button (class "toga-icon-arrow-right")
-//         try {
-//           await driver.findElement(By.css('.toga-icon-arrow-right')).click();
-          
-//           console.log("Next page clicked.");
-      
-//           // Wait for the new content to load, for example, wait for a specific element to appear
-//           await driver.wait(until.elementLocated(By.css('td[data-qa="user-name"]')), 10000); // Adjust time as necessary
-//       } catch (error) {
-//           console.log("No more pages to navigate or error clicking next:", error);
-//           hasNextPage = false;
-//       }
-      
-//     }
-
-//     // Write to CSV
-//     await csvWriter.writeRecords(records);
-//     console.log('User links have been saved to user_links.csv');
-// }
-
-const { createObjectCsvWriter } = require('csv-writer');
-
-async function extractAndSaveUserLinks(driver) {
-  // Navigate to the user management page
-  await driver.get('https://learn.sassoon-online.com/manage/users');
-
-  // CSV writer setup in append mode
-  const csvWriter = createObjectCsvWriter({
-      path: 'user_links.csv',
-      header: [
-          { id: 'userName', title: 'User Name' },
-          { id: 'link', title: 'Link' },
-      ],
-      append: true // Enable appending to the file
-  });
-
-  let hasNextPage = true;
-
-  while (hasNextPage) {
-      // Wait for the page to load completely
-      await driver.sleep(5000);
-
-      // Find all <td> elements with data-qa="user-name"
-      const userNameElements = await driver.findElements(By.css('td[data-qa="user-name"]'));
-
-      // Extract user name and link data from the current page
-      for (const userNameElement of userNameElements) {
-          try {
-              // Find the <a> tag within the <td>
-              const linkElement = await userNameElement.findElement(By.tagName('a'));
-              const userName = await linkElement.getText(); // Get the text of the user name
-              const userLink = await linkElement.getAttribute('href'); // Get the href attribute
-
-              // Add the current record
-              const record = [{ userName, link: userLink }];
-              await csvWriter.writeRecords(record); // Write record immediately
-              
-              console.log(`Extracted and saved: ${userName}, ${userLink}`);
-          } catch (error) {
-              console.log("Error extracting user data:", error);
-          }
-      }
-
-      // Try to click the next page button (class "toNextBtn")
-      try {
-          const nextButton = await driver.findElement(By.css('.toNextBtn'));
-          if (nextButton) {
-              await nextButton.click();
-              console.log("Next page clicked.");
-              
-              await driver.sleep(5000);
-              // Wait for the new content to load, e.g., wait for a specific element to appear
-              await driver.findElements(By.css('td[data-qa="user-name"]'), 10000); // Adjust time as necessary
-          } else {
-              hasNextPage = false; // No next button means no more pages
-          }
-      } catch (error) {
-          console.log("No more pages to navigate or error clicking next:", error);
-          hasNextPage = false; // Stop looping if there are no more pages or an error occurs
-      }
-  }
-
-  console.log('All user links have been extracted and saved.');
+    for (const batch of batches) {
+        await Promise.all(batch.map(async (url) => {
+            if (typeof url !== 'string' || url.trim() === '') {
+                console.log(`Invalid URL: ${url}. Skipping...`);
+                return;
+            }
+            console.log(`Navigating to: ${url}`);
+            await driver.get(url);
+            await driver.sleep(3000); // Adjust sleep time as needed
+            await extractAndSaveUserInfo(driver, csvWriter, url);
+        }));
+    }
 }
 
-
-
 (async function main() {
-    // Chrome options
     const chromeOptions = new chrome.Options();
     chromeOptions.addArguments('--no-sandbox');
     chromeOptions.addArguments('--disable-dev-shm-usage');
-    chromeOptions.addArguments('--disable-blink-features=AutomationControlled'); // Hide automation flag
+    chromeOptions.addArguments('--disable-blink-features=AutomationControlled');
     chromeOptions.addArguments('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-    // chromeOptions.addArguments('--headless');  // Uncomment to run headless
+    // chromeOptions.addArguments('--headless'); // Uncomment to run headless
 
     const driver = await new Builder()
         .forBrowser('chrome')
@@ -181,8 +105,26 @@ async function extractAndSaveUserLinks(driver) {
     try {
         // Perform login
         await login(driver);
-        // Extract user links and save to CSV
-        await extractAndSaveUserLinks(driver);
+
+        // Read URLs from CSV
+        const urls = await readUrlsFromCsv('users-user_links.csv'); // Update to your CSV file path
+
+        // CSV writer setup in append mode
+        const csvWriter = createObjectCsvWriter({
+            path: 'user_info.csv',
+            header: [
+                { id: 'url', title: 'URL' },
+                { id: 'name', title: 'User Name' },
+                { id: 'bundleName', title: 'Bundle Name' },
+                { id: 'enrollmentBadge', title: 'Enrollment Badge' },
+                { id: 'expiryDate', title: 'Expiry Date' },
+            ],
+            append: true
+        });
+
+        // Scrape URLs in parallel with a concurrency of 5
+        await scrapeUrlsInParallel(driver, csvWriter, urls, 5);
+
     } finally {
         // Close the browser
         await driver.quit();
