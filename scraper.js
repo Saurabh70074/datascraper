@@ -10,7 +10,7 @@ async function readUrlsFromCsv(filePath) {
         const urls = [];
         fs.createReadStream(filePath)
             .pipe(parse({ columns: true }))
-            .on('data', (row) => urls.push(row.url)) // Assuming the column name for URLs is 'link'
+            .on('data', (row) => urls.push(row.url)) // Assuming the column name for URLs is 'url'
             .on('end', () => resolve(urls))
             .on('error', (error) => reject(error));
     });
@@ -28,16 +28,13 @@ async function login(driver) {
 
     // Check for CAPTCHA
     try {
-      await driver.findElement(By.id('captchaElement'));
-      console.log("CAPTCHA detected. Please solve it within 90 seconds.");
-      
-      // Wait for 90 seconds to allow CAPTCHA solving
-      await driver.sleep(90000);
-
-      console.log("CAPTCHA check complete.");
-  } catch (error) {
-      console.log("No CAPTCHA detected.");
-  }
+        await driver.findElement(By.id('captchaElement'));
+        console.log("CAPTCHA detected. Please solve it within 90 seconds.");
+        await driver.sleep(90000);
+        console.log("CAPTCHA check complete.");
+    } catch (error) {
+        console.log("No CAPTCHA detected.");
+    }
 }
 
 // Function to extract all bundle details including expiry dates
@@ -47,7 +44,14 @@ async function extractAndSaveUserInfo(driver, csvWriter, url) {
         
         // Extract bundle rows
         const bundleRows = await driver.findElements(By.css('tbody tr.bundle-enrollments-row_kttW1'));
-        
+
+        // Ensure that at least the URL gets written even if no bundles are found
+        if (bundleRows.length === 0) {
+            const record = { userName, url, bundleName: 'N/A', enrollmentBadge: 'N/A', expiryDate: 'N/A' };
+            await csvWriter.writeRecords([record]);
+            console.log(`No bundles found. Saved minimal data for URL: ${url}`);
+        }
+
         for (const row of bundleRows) {
             const bundleName = await row.findElement(By.css('td.bundle-enrollments-row__bundle-name_Pu24E span')).getText().catch(() => 'N/A');
             const enrollmentBadge = await row.findElement(By.css('td[data-qa="enrollment-badge"] span')).getText().catch(() => 'N/A');
@@ -56,7 +60,7 @@ async function extractAndSaveUserInfo(driver, csvWriter, url) {
             let expiryDate = 'N/A';
             const expiryDateElement = await row.findElements(By.css('td[data-qa="expiry-date"]'));
             if (expiryDateElement.length > 0) {
-                expiryDate = await expiryDateElement[0].getText();
+                expiryDate = await expiryDateElement[0].getText().catch(() => 'N/A');
             }
 
             const record = { userName, url, bundleName, enrollmentBadge, expiryDate };
@@ -64,7 +68,10 @@ async function extractAndSaveUserInfo(driver, csvWriter, url) {
             console.log(`Extracted and saved: ${JSON.stringify(record)}`);
         }
     } catch (error) {
-        console.log("Error extracting user info:", error);
+        console.log(`Error extracting user info for URL: ${url}`, error);
+        // Ensure we still log something even if an error occurs
+        const record = { url, userName: 'Error', bundleName: 'Error', enrollmentBadge: 'Error', expiryDate: 'Error' };
+        await csvWriter.writeRecords([record]);
     }
 }
 
@@ -76,16 +83,21 @@ async function scrapeUrlsInParallel(driver, csvWriter, urls, concurrency = 5) {
     }
 
     for (const batch of batches) {
-        await Promise.all(batch.map(async (url) => {
+        // Process each batch sequentially to reduce chances of overloading
+        for (const url of batch) {
             if (typeof url !== 'string' || url.trim() === '') {
                 console.log(`Invalid URL: ${url}. Skipping...`);
-                return;
+                continue;
             }
-            console.log(`Navigating to: ${url}`);
-            await driver.get(url);
-            await driver.sleep(3000); // Adjust sleep time as needed
-            await extractAndSaveUserInfo(driver, csvWriter, url);
-        }));
+            try {
+                console.log(`Navigating to: ${url}`);
+                await driver.get(url);
+                await driver.sleep(5000); // Adjust sleep time as needed
+                await extractAndSaveUserInfo(driver, csvWriter, url);
+            } catch (error) {
+                console.log(`Failed to navigate to or process URL: ${url}`, error);
+            }
+        }
     }
 }
 
@@ -114,7 +126,7 @@ async function scrapeUrlsInParallel(driver, csvWriter, urls, concurrency = 5) {
             path: 'user_info.csv',
             header: [
                 { id: 'url', title: 'URL' },
-                { id: 'name', title: 'User Name' },
+                { id: 'userName', title: 'User Name' },
                 { id: 'bundleName', title: 'Bundle Name' },
                 { id: 'enrollmentBadge', title: 'Enrollment Badge' },
                 { id: 'expiryDate', title: 'Expiry Date' },
