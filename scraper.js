@@ -137,6 +137,61 @@ await createAccountButton.click();
         await submitButton.click();
         await driver.sleep(20000); // Allow time for submission
 
+
+        const accountSettingsButton = await driver.wait(
+            until.elementLocated(By.xpath("//button[@aria-label='Open account settings']")),
+            10000
+        );
+
+        // Perform hover action on the accountSettingsButton
+        const actions = driver.actions({ bridge: true });
+        await actions.move({ origin: accountSettingsButton }).perform();
+        console.log("Hovered over account settings button.");
+
+        // Wait for the "Logout" button to appear after hover and click it
+        const logoutButton = await driver.wait(
+            until.elementLocated(By.xpath("//span[contains(@class, 'cmp-button__text') and text()='Log out']")),
+            10000
+        );
+        await driver.wait(until.elementIsVisible(logoutButton), 10000);
+        await logoutButton.click();
+        console.log("Logout button clicked.");
+
+        const downArrow = await driver.wait(until.elementLocated(By.className('loginBtn--s0uOa')), 30000);
+        await downArrow.click();
+    
+        
+        await driver.sleep(5000);
+        // Click the "CREATE ACCOUNT" button with specific class
+    const loginAccountButton = await driver.wait(
+        until.elementLocated(By.xpath("//button[contains(@class, 'Tabs__tab--Dr4aZ') and text()='LOG IN']")),
+        30000
+    );
+    await driver.wait(until.elementIsVisible(loginAccountButton), 30000);
+    await loginAccountButton.click();
+
+
+    const resetAccountButton = await driver.wait(
+        until.elementLocated(By.xpath("//button[contains(@class, 'AuthForm__forgotPassword--M+ax4') and text()='Forgot your password?']")),
+        30000
+    );
+    await driver.wait(until.elementIsVisible(resetAccountButton), 30000);
+    await resetAccountButton.click();
+
+    const emailresetInput = await driver.wait(
+        until.elementLocated(By.id("FORGET_PASSWORD_FORM-username")),
+        10000
+    );
+    await emailresetInput.sendKeys(userData.Email);
+
+    const resetPasswordButton = await driver.wait(
+        until.elementLocated(By.xpath("//button[contains(@class, 'ForgetPassword__submit--XO8O6')]//span[text()='Reset password']/..")),
+        30000
+    );
+    await driver.wait(until.elementIsVisible(resetPasswordButton), 30000);
+    await resetPasswordButton.click();
+    
+
     } catch (error) {
         console.error('Error during registration:', error);
     }
