@@ -119,11 +119,11 @@ async function scrapeUrlsInParallel(driver, csvWriter, urls, concurrency = 5) {
         await login(driver);
 
         // Read URLs from CSV
-        const urls = await readUrlsFromCsv('user_links.csv'); // Update to your CSV file path
+        const urls = await readUrlsFromCsv('users-user_links_three.csv'); // Update to your CSV file path
 
         // CSV writer setup in append mode
         const csvWriter = createObjectCsvWriter({
-            path: 'user_info.csv',
+            path: 'user_info_three.csv',
             header: [
                 { id: 'url', title: 'URL' },
                 { id: 'userName', title: 'User Name' },
